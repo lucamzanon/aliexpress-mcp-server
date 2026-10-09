@@ -826,12 +826,30 @@ def _extract_pdp_fields(mtop_resp: dict, item_id: str) -> dict:
     qty_view = (result.get("QUANTITY_PC") or {}).get("allSkuQuantityView") or {}
     promo_map = (result.get("PRICE_BANNER") or {}).get("atmosphereCodeMap") or {}
     sku_block = result.get("SKU") or {}
+    # "propId:valId" → display name, for skuAttr parts without a "#Name" suffix.
+    value_names: dict[str, str] = {}
+    for prop in sku_block.get("skuProperties") or []:
+        if not isinstance(prop, dict):
+            continue
+        for val in prop.get("skuPropertyValues") or []:
+            if isinstance(val, dict):
+                key = f"{prop.get('skuPropertyId')}:{val.get('propertyValueIdLong')}"
+                value_names[key] = (
+                    val.get("propertyValueDisplayName")
+                    or val.get("propertyValueDefinitionName")
+                    or val.get("propertyValueName")
+                    or key
+                )
     for path in sku_block.get("skuPaths") or []:
         if not isinstance(path, dict):
             continue
         sid = str(path.get("skuIdStr") or path.get("skuId") or "")
         attr = path.get("skuAttr") or ""
-        name = "; ".join(part.split("#", 1)[-1] for part in attr.split(";")) or sid
+        parts = []
+        for part in attr.split(";"):
+            key, _, label = part.partition("#")
+            parts.append(label or value_names.get(key, key))
+        name = "; ".join(p for p in parts if p) or sid
         v: dict[str, Any] = {
             "sku_id": sid,
             "name": name,
